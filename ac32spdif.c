@@ -1,11 +1,7 @@
-
 #include <stdio.h>
-//#include <stdlib.h>
+#include <stdint.h>
 //#include <string.h>
 #include <memory.h>
-
-//#include "fs_codes.h"
-
 
 short bitrates[] = { 32,  40,  48,  56,  64,  80,  96, 112, 128, 160,
 192, 224, 256, 320, 384, 448, 512, 576, 640 };
@@ -13,7 +9,7 @@ short bitrates[] = { 32,  40,  48,  56,  64,  80,  96, 112, 128, 160,
 short fsize44[] = {  70,   88,  105,  122,  140,  175,  209,  244,  279,  349,
 418,  488,  558,  697,  836,  976, 1115, 1254, 1394 };
 
-unsigned long DecFS(char sratecode, unsigned long fsizecode)
+uint32_t DecFS(char sratecode, uint32_t fsizecode)
 {
 	switch (sratecode)
 	{
@@ -30,59 +26,74 @@ unsigned long DecFS(char sratecode, unsigned long fsizecode)
 	return 0;
 }
 
-
-
+#pragma pack(1)
+struct AC3HEADER {
+	uint16_t Syncword;
+	uint16_t CRC;
+	uint8_t Sampleratecode;
+	uint8_t Bitstreamcode;
+	// further elements left out
+};
 
 struct WAVEHEADER {
-    unsigned long  ChunkID;
-    unsigned long  ChunkSize;
-    unsigned long  Format;
-    unsigned long  SubChunk1ID;
-    unsigned long  SubChunk1Size;
-    unsigned short AudioFormat;
-    unsigned short NumChannels;
-    unsigned long  SampleRate;
-    unsigned long  ByteRate;
-    unsigned short BlockAlign;
-    unsigned short BitsPerSample;
-    unsigned long  SubChunk2ID;
-    unsigned long  SubChunk2Size;
+    uint8_t  ChunkID[4];
+    uint32_t  ChunkSize;
+    uint8_t  Format[4];
+    uint8_t  SubChunk1ID[4];
+    uint32_t  SubChunk1Size;
+    uint16_t AudioFormat;
+    uint16_t NumChannels;
+    uint32_t  SampleRate;
+    uint32_t  ByteRate;
+    uint16_t BlockAlign;
+    uint16_t BitsPerSample;
+    uint8_t  SubChunk2ID[4];
+    uint32_t  SubChunk2Size;
 };
-
 
 struct AC3PREAMBLE {
-	unsigned short sync1;
-	unsigned short sync2;
-	unsigned char burst_infoLSB;
-	unsigned char burst_infoMSB;
-	unsigned short lengthcode;
+	uint16_t sync1;
+	uint16_t sync2;
+	uint8_t buffer_infoLSB;
+	uint8_t buffer_infoMSB;
+	uint16_t lengthcode;
 };
+#pragma pack(4)
 
-char burst[6144];
+char buffer[6144];
 
 FILE *infile, *outfile;
 
-unsigned long bytesread;
-unsigned long payloadbytes;
+uint32_t bytesread;
+uint32_t payloadbytes;
 char sampleratecode;
-unsigned long framesizecode;
+uint32_t framesizecode;
 
-struct AC3PREAMBLE ac3p = { 0xF872, 0x4E1F, 1, 0, 0x3800 };
-struct WAVEHEADER wavhdr = { 0x46464952,
-							0,
-							0x45564157,
-							0x20746D66,
-							16,
-							1,
-							2,
-							0,
-							0,
-							4,
-							16,
-							0x61746164,
-							0 };
+struct AC3PREAMBLE ac3p = {
+	.sync1 = 0xF872,
+	.sync2 = 0x4E1F,
+	.buffer_infoLSB = 1,
+	.buffer_infoMSB = 0,
+	.lengthcode = 0x3800
+};
 
-unsigned long i;
+struct WAVEHEADER wavhdr = {
+	.ChunkID = "RIFF",
+	.ChunkSize = 0,
+	.Format = "WAVE",
+	.SubChunk1ID = "fmt ",
+	.SubChunk1Size = 16,
+	.AudioFormat = 1,
+	.NumChannels = 2,
+	.SampleRate = 0,
+	.ByteRate = 0,
+	.BlockAlign = 4,
+	.BitsPerSample = 16,
+	.SubChunk2ID = "data",
+	.SubChunk2Size = 0
+};
+
+uint32_t i;
 char temp;
 
 int main( int argc, char *argv[ ], char *envp[ ] )
@@ -95,31 +106,30 @@ int main( int argc, char *argv[ ], char *envp[ ] )
 
 	infile = fopen(argv[1], "rb");
 	outfile = fopen(argv[2], "wb");
-	//fseek(outfile, SEEK_SET, 44);
+
 	fwrite (&wavhdr, sizeof(struct WAVEHEADER), 1, outfile);
-
-
 
 	for(;;)
 	{
-		memset (burst, 0, 6144);
-		bytesread = fread(&burst[8], 1, 6, infile);
+		memset (buffer, 0, 6144);
+		bytesread = fread(buffer, 1, 6, infile);
 		if (bytesread < 6)
 		{
-			printf ("EOF reached (Frame Header reading)!\nCurrent position in INFILE: %i\n", ftell(infile));
+			printf ("EOF reached (Frame Header reading)!\nCurrent position in INFILE: %li\n", ftell(infile));
 			break;
 		}
-		if ((burst[8] != 0x0B) || (burst[9] != 0x77))
+		if ((buffer[0] != 0x0B) || (buffer[1] != 0x77))
 		{
-			printf("ERROR: INVALID SYNCWORD !\nCurrent position in INFILE: %i\n", ftell(infile));
+			printf("ERROR: INVALID SYNCWORD !\nCurrent position in INFILE: %li\n", ftell(infile));
 			break;
 		}
-		framesizecode = (burst[12] & 63);
-		sampleratecode = ((burst[12] & 192) / 64);
+		framesizecode = (buffer[4] & 63);
+		sampleratecode = ((buffer[4] & 192) / 64);
 
 		if (wavhdr.SampleRate == 0)
 		{
-				printf ("First Sampleratecode: %i\n", sampleratecode);
+				printf ("Framesizecode: %i\n", framesizecode);
+				printf ("Sampleratecode: %i\n", sampleratecode);
 
 				switch (sampleratecode)
 				{
@@ -144,30 +154,26 @@ int main( int argc, char *argv[ ], char *envp[ ] )
 		payloadbytes = DecFS (sampleratecode, framesizecode);
 		payloadbytes *= 2;
 
-		bytesread = fread (&burst[14], 1, payloadbytes - 6, infile);
+		bytesread = fread (&buffer[6], 1, payloadbytes - 6, infile);
 		if ((bytesread + 6) < payloadbytes)
 		{
-			printf ("EOF reached (Burst Reading)!\nCurrent position in INFILE: %i\n", ftell(infile));
+			printf ("EOF reached (Burst Reading)!\nCurrent position in INFILE: %li\n", ftell(infile));
 			printf ("Frame size: %i  .. Bytes read: %i\n", payloadbytes, bytesread);
 			break;
 		}
-		ac3p.burst_infoMSB = (burst[13] & 7);
+		ac3p.buffer_infoMSB = (buffer[5] & 7);
 		ac3p.lengthcode = (short)(payloadbytes * 8);
 
-		for (i = 8; i < (payloadbytes + 8); i += 2)
+		for (i = 0; i < payloadbytes; i += 2)
 		{
-			temp = burst[i];
-			burst[i] = burst[i + 1];
-			burst[i + 1] = temp;
+			temp = buffer[i];
+			buffer[i] = buffer[i + 1];
+			buffer[i + 1] = temp;
 		}
 
-		memcpy (burst, &ac3p, sizeof(struct AC3PREAMBLE));
-
-		fwrite (burst, 1, 6144, outfile);
-
+		fwrite (&ac3p, 1, sizeof(struct AC3PREAMBLE), outfile);
+		fwrite (buffer, 1, 6136, outfile);
 	}
-
-	printf ("Last Sampleratecode: %i\n", sampleratecode);
 
 	wavhdr.SubChunk2Size = (ftell(outfile) - 44);
 	wavhdr.ChunkSize = wavhdr.SubChunk2Size + 36;

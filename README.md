@@ -14,14 +14,6 @@ Take care: Playing back the files produced via speakers at high volume
 may damage these or your hearing.
 
 
-A note about coding style
--------------------------
-
-These sources are very old (from around 2006/2007) and show my coding
-abilities back then when I started with C. I hope to clean this up
-and modernize it at some point in the future.
-
-
 ac32spdif
 ---------
 
@@ -43,6 +35,22 @@ when the medium is played back without a DTS decoder. In this case,
 only the lower 14 bits of a word would be used, with the high 2 bits
 set to zero. This encoding may be added to dts2spdif later on.
 
+Testing
+-------
+
+In Linux you can play the generated wav files as follows.
+
+Switch spdif output to non-pcm (prevent playback as audio):
+`iecset audio 0`
+
+Play file with wav header (find digital device using aplay -L):
+`aplay -D hw:CARD=NVidia,DEV=1 ac3_audio.wav`
+
+Wav headers are currently added to files, but are not stricty required. To play without wav header:
+`aplay -D hw:CARD=NVidia,DEV=1 -f S16_LE -c 2 -r 48000 ac3_audio.pcm`
+
+Good infos are here:
+https://alsa.opensrc.org/DigitalOut#Digital_surround_passthrough
 
 License
 -------
@@ -54,4 +62,4 @@ Do whatever you like with this code, but if you use it for your own
 application I would appreciate an attribution note in the documentation.
 Thanks!
 
- -- norly
+Original source by: norly
